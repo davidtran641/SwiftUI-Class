@@ -96,21 +96,24 @@ struct MetadataView: View {
 }
 
 struct TextView: View {
-    private let viewModel: TextViewModel
-    private let versionLayout: Version<ViewLayout>?
+    private let versionViewModel: Version<TextViewModel>
+    private var viewModel: TextViewModel {
+        return versionViewModel.value
+    }
     
+    private let versionLayout: Version<ViewLayout>?
     private var layout: ViewLayout? {
         return versionLayout?.value
     }
     
     init(viewModel: TextViewModel, preferredLayout: ViewLayout?) {
-        self.viewModel = viewModel
+        self.versionViewModel = Version(value: viewModel)
+        
         if let layout = preferredLayout ?? viewModel.viewLayout {
-            self.versionLayout = Version<ViewLayout>(value: layout)
+            self.versionLayout = Version(value: layout)
         } else {
             self.versionLayout = nil
         }
-        print("init viewModel: \(self.versionLayout?.version)")
     }
     
     var body: some View {
@@ -175,6 +178,8 @@ class ViewModel {
 }
 
 class ViewLayout: Versionable {
+    typealias VersionType = Int
+    
     private(set) var width: CGFloat?
     private(set) var height: CGFloat?
     private(set) var alignment: NSTextAlignment
@@ -194,11 +199,18 @@ class ViewLayout: Versionable {
         self.numberOfLines = numberOfLines
         self.alignment = alignment
         
-        version = nextVersion
+        // Allow overflow as we just want to change the version
+        version = version &+ 1
     }
 }
 
-class TextViewModel: ViewModel {
+class TextViewModel: ViewModel, Versionable {
+    typealias VersionType = String
+    
+    var version: String {
+        return content
+    }
+    
     private(set) var content: String
     
     init(content: String, viewLayout: ViewLayout?) {
@@ -221,18 +233,13 @@ class MetadataViewModel: ViewModel {
 }
 
 protocol Versionable {
-    var version: Int { get }
-}
-
-extension Versionable {
-    var nextVersion: Int {
-        return version &+ 1
-    }
+    associatedtype VersionType: Equatable
+    var version: VersionType { get }
 }
 
 struct Version<T: Versionable> {
     let value: T
-    let version: Int
+    let version: T.VersionType
     init(value: T) {
         self.value = value
         self.version = value.version
