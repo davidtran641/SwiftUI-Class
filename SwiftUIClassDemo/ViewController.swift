@@ -22,6 +22,7 @@ class ViewController: UIViewController {
     private lazy var metaViewController = UIHostingController<MetadataView>(rootView: MetadataView(presenter: presenter))
     
     private lazy var button = UIButton(type: .system)
+    private lazy var changeViewModelButton = UIButton(type: .system)
     
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -35,7 +36,12 @@ class ViewController: UIViewController {
         button.setTitle("Change style", for: .normal)
         button.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(button)
-        button.addTarget(self, action: #selector(didClickButton), for: .touchUpInside)
+        button.addTarget(self, action: #selector(didClickChangeStyleButton), for: .touchUpInside)
+        
+        changeViewModelButton.setTitle("Change viewModel", for: .normal)
+        changeViewModelButton.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(changeViewModelButton)
+        changeViewModelButton.addTarget(self, action: #selector(didClickChangeViewModelButton), for: .touchUpInside)
     }
     
     override func viewDidLayoutSubviews() {
@@ -43,11 +49,17 @@ class ViewController: UIViewController {
         metaViewController.view.frame = view.bounds
         
         let size = view.bounds.size
-        button.frame = CGRect(x: size.width / 2 - 50, y: size.height - 100, width: 100, height: 50)
+        button.frame = CGRect(x: size.width / 2 - 50, y: size.height - 200, width: 100, height: 50)
+        
+        changeViewModelButton.frame = CGRect(x: size.width / 2 - 50, y: size.height - 100, width: 100, height: 50)
     }
     
-    @objc func didClickButton() {
+    @objc func didClickChangeStyleButton() {
         presenter.updateLayout()
+    }
+    
+    @objc func didClickChangeViewModelButton() {
+        presenter.updateViewModel()
     }
 
 }
@@ -85,15 +97,23 @@ struct MetadataView: View {
 
 struct TextView: View {
     private let viewModel: TextViewModel
-    private let preferredLayout: ViewLayout?
+    private let versionLayout: Version<ViewLayout>?
+    
+    private var layout: ViewLayout? {
+        return versionLayout?.value
+    }
+    
     init(viewModel: TextViewModel, preferredLayout: ViewLayout?) {
         self.viewModel = viewModel
-        self.preferredLayout = preferredLayout
+        if let layout = preferredLayout ?? viewModel.viewLayout {
+            self.versionLayout = Version<ViewLayout>(value: layout)
+        } else {
+            self.versionLayout = nil
+        }
+        print("init viewModel: \(self.versionLayout?.version)")
     }
     
     var body: some View {
-        let layout = preferredLayout ?? viewModel.viewLayout
-        
         Text(viewModel.content)
             .frame(width: layout?.width, height: layout?.height)
             .multilineTextAlignment(layout?.alignment == .center ? .center : .leading)
@@ -107,6 +127,8 @@ class Presenter: ObservableObject {
     
     private var isIpad: Bool = false
     
+    private var isShortContent: Bool = false
+    
     init(viewModel: MetadataViewModel?) {
         self.viewModel = viewModel
         changeLayout()
@@ -115,6 +137,20 @@ class Presenter: ObservableObject {
     func updateLayout() {
         isIpad.toggle()
         changeLayout()
+        
+        // triger swift ui update
+        self.viewModel = viewModel
+    }
+    
+    func updateViewModel() {
+        isShortContent.toggle()
+        
+        if isShortContent {
+            viewModel?.subtitle.updateContent(content: "Short subtitle")
+        } else {
+            viewModel?.subtitle.updateContent(content: String(repeating: "This is a very long title and content ",
+                                                              count: 3))
+        }
         
         // triger swift ui update
         self.viewModel = viewModel
@@ -138,24 +174,28 @@ class ViewModel {
     }
 }
 
-class ViewLayout {
+class ViewLayout: Versionable {
     private(set) var width: CGFloat?
     private(set) var height: CGFloat?
     private(set) var alignment: NSTextAlignment
     private(set) var numberOfLines: Int = 0
+    
+    private(set) var version: Int
     
     init(width: CGFloat? = nil, height: CGFloat? = nil, alignment: NSTextAlignment = .left, numberOfLines: Int = 0) {
         self.width = width
         self.height = height
         self.alignment = alignment
         self.numberOfLines = numberOfLines
+        self.version = Int.max
     }
     
     func updateLayout(numberOfLines: Int, alignment: NSTextAlignment) {
         self.numberOfLines = numberOfLines
         self.alignment = alignment
+        
+        version = nextVersion
     }
-    
 }
 
 class TextViewModel: ViewModel {
@@ -165,6 +205,10 @@ class TextViewModel: ViewModel {
         self.content = content
         super.init(viewLayout: viewLayout)
     }
+    
+    func updateContent(content: String) {
+        self.content = content
+    }
 }
 
 class MetadataViewModel: ViewModel {
@@ -173,6 +217,25 @@ class MetadataViewModel: ViewModel {
     init(viewLayout: ViewLayout?, content: String) {
         self.subtitle = TextViewModel(content: content, viewLayout: ViewLayout(width: 240, height: nil, alignment: .left, numberOfLines: 2))
         super.init(viewLayout: viewLayout)
+    }
+}
+
+protocol Versionable {
+    var version: Int { get }
+}
+
+extension Versionable {
+    var nextVersion: Int {
+        return version &+ 1
+    }
+}
+
+struct Version<T: Versionable> {
+    let value: T
+    let version: Int
+    init(value: T) {
+        self.value = value
+        self.version = value.version
     }
 }
 
